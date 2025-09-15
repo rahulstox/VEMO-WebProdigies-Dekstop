@@ -7,6 +7,7 @@ import io from "socket.io-client";
 let videoTransferFileName: string | undefined;
 let mediaRecorder: MediaRecorder | undefined;
 let userId: string;
+let micTrackRef: MediaStreamTrack | undefined;
 
 // Socket connection
 const socket = io(import.meta.env.VITE_SOCKET_URL as string);
@@ -38,6 +39,11 @@ export const StartRecording = (onSources: {
   } else {
     console.error("MediaRecorder is not initialized or already recording.");
   }
+};
+
+// Expose a mic toggle for UI
+export const toggleMicrophone = (enabled: boolean) => {
+  if (micTrackRef) micTrackRef.enabled = enabled;
 };
 
 // Stop recording function
@@ -248,7 +254,7 @@ export const selectSources = async (
       }
     }
 
-    // Create audio stream if audio is enabled
+    // Create audio stream with fallback
     let audioStream: MediaStream | undefined;
     try {
       audioStream = await navigator.mediaDevices.getUserMedia({
@@ -259,9 +265,20 @@ export const selectSources = async (
       });
     } catch (audioErr) {
       console.warn(
-        "Audio capture failed, continuing with video only:",
+        "Audio device exact match failed, trying default mic:",
         audioErr
       );
+      try {
+        audioStream = await navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: true,
+        });
+      } catch (fallbackErr) {
+        console.warn(
+          "Default mic failed, proceeding without audio:",
+          fallbackErr
+        );
+      }
     }
 
     // Assign the screen video stream to the video element
@@ -276,6 +293,8 @@ export const selectSources = async (
       ...stream.getTracks(),
       ...(audioStream ? audioStream.getTracks() : []),
     ]);
+
+    micTrackRef = audioStream?.getAudioTracks()?.[0];
 
     // Initialize the MediaRecorder
     mediaRecorder = new MediaRecorder(combineStream, {
