@@ -40,7 +40,7 @@ export const useStudioSettings = (
 
   useEffect(() => {
     if (screen && audio) {
-      console.log(screen, audio);
+      console.log("Sending media-sources:", { screen, id, audio, preset });
       //@ts-ignore
       window.ipcRenderer.send("media-sources", {
         screen,

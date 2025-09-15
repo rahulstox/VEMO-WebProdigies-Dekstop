@@ -1,22 +1,17 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
-
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  ipcMain,
+  systemPreferences,
+} from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// The built directory structure
-//
-// ├─┬─┬ dist
-// │ │ └── index.html
-// │ │
-// │ ├─┬ dist-electron
-// │ │ ├── main.js
-// │ │ └── preload.mjs
-// │
 process.env.APP_ROOT = path.join(__dirname, "..");
 
-// 🚧 Use ['ENV_NAME'] avoid vite:define plugin - Vite@2.x
 export const VITE_DEV_SERVER_URL = process.env["VITE_DEV_SERVER_URL"];
 export const MAIN_DIST = path.join(process.env.APP_ROOT, "dist-electron");
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
@@ -28,6 +23,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 let win: BrowserWindow | null;
 let studio: BrowserWindow | null;
 let floatingWebCam: BrowserWindow | null;
+
 function createWindow() {
   win = new BrowserWindow({
     width: 500,
@@ -47,11 +43,10 @@ function createWindow() {
       preload: path.join(__dirname, "preload.mjs"),
     },
   });
+
   studio = new BrowserWindow({
     width: 400,
-    // height: 200,
     minHeight: 70,
-    // maxHeight: 400,
     minWidth: 300,
     maxWidth: 400,
     frame: false,
@@ -66,17 +61,19 @@ function createWindow() {
       preload: path.join(__dirname, "preload.mjs"),
     },
   });
+
   floatingWebCam = new BrowserWindow({
     width: 200,
     height: 200,
-    minHeight: 20,
+    minHeight: 200,
     maxHeight: 200,
     minWidth: 200,
     maxWidth: 200,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    focusable: false,
+    hasShadow: true,
+    focusable: true,
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     webPreferences: {
       nodeIntegration: false,
@@ -92,7 +89,7 @@ function createWindow() {
   studio.setAlwaysOnTop(true, "screen-saver", 1);
   floatingWebCam.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   floatingWebCam.setAlwaysOnTop(true, "screen-saver", 1);
-  // Test active push message to Renderer-process.
+
   win.webContents.on("did-finish-load", () => {
     win?.webContents.send("main-process-message", new Date().toLocaleString());
   });
@@ -109,16 +106,12 @@ function createWindow() {
     studio.loadURL(`${import.meta.env.VITE_APP_URL}/studio.html`);
     floatingWebCam.loadURL(`${import.meta.env.VITE_APP_URL}/webcam.html`);
   } else {
-    // win.loadFile('dist/index.html')
     win.loadURL(`file://${path.join(RENDERER_DIST, "index.html")}`);
     studio.loadURL(`file://${path.join(RENDERER_DIST, "studio.html")}`);
     floatingWebCam.loadURL(`file://${path.join(RENDERER_DIST, "webcam.html")}`);
   }
 }
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
@@ -128,46 +121,85 @@ app.on("window-all-closed", () => {
   }
 });
 
-ipcMain.on("closeApp", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    win = null;
-    studio = null;
-    floatingWebCam = null;
-  }
-});
-
-ipcMain.handle("getSources", async () => {
-  const data = await desktopCapturer.getSources({
-    thumbnailSize: { height: 100, width: 150 },
-    fetchWindowIcons: true,
-    types: ["window", "screen"],
-  });
-  return data;
-});
-ipcMain.on("media-sources", (event, payload) => {
-  console.log(event);
-  studio?.webContents.send("profile-received", payload);
-});
-ipcMain.on("resize-studio", (event, payload) => {
-  console.log(event);
-  if (payload.shrink) {
-    studio?.setSize(400, 100);
-  }
-  if (!payload.shrink) {
-    studio?.setSize(400, 250);
-  }
-});
-ipcMain.on("hide-plugin", (event, payload) => {
-  console.log(event);
-  win?.webContents.send("hide-plugin", payload);
-});
 app.on("activate", () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
 
-app.whenReady().then(createWindow);
+// App ready hone ke baad hi saare listeners register honge
+app.whenReady().then(() => {
+  // Single, correct handler for "getSources"
+  ipcMain.handle("getSources", async () => {
+    try {
+      console.log("getSources called from renderer");
+
+      if (process.platform === "darwin") {
+        const status = systemPreferences.getMediaAccessStatus("screen");
+        if (status !== "granted") {
+          const success = await systemPreferences.askForMediaAccess("screen");
+          if (!success) {
+            console.log("Screen recording permission denied by user.");
+            return {
+              error: "PERMISSION_DENIED",
+              message: "Permission was denied.",
+            };
+          }
+        }
+      }
+
+      const sources = await desktopCapturer.getSources({
+        thumbnailSize: { height: 100, width: 150 },
+        fetchWindowIcons: true,
+        types: ["screen", "window"],
+      });
+
+      console.log("Found sources:", sources.length);
+      sources.forEach((source, index) => {
+        console.log(`Source ${index}:`, {
+          id: source.id,
+          name: source.name,
+          type: source.id.startsWith("screen:") ? "screen" : "window",
+        });
+      });
+
+      // Return serializable minimal data plus a friendly name
+      const sanitized = sources.map((s, idx) => ({
+        id: s.id,
+        name: s.id.startsWith("screen:")
+          ? `Screen ${idx + 1}${s.name && s.name !== "" ? ` (${s.name})` : ""}`
+          : s.name || `Window ${idx + 1}`,
+        type: s.id.startsWith("screen:") ? "screen" : "window",
+      }));
+      return sanitized;
+    } catch (error) {
+      console.error("Error in getSources:", error);
+      return [];
+    }
+  });
+
+  // Other handlers
+  ipcMain.on("closeApp", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+
+  ipcMain.on("media-sources", (_, payload) => {
+    studio?.webContents.send("profile-received", payload);
+  });
+
+  ipcMain.on("resize-studio", (_, payload) => {
+    if (payload.shrink) {
+      studio?.setSize(400, 100);
+    } else {
+      studio?.setSize(400, 250);
+    }
+  });
+
+  ipcMain.on("hide-plugin", (_, payload) => {
+    win?.webContents.send("hide-plugin", payload);
+  });
+
+  createWindow();
+});

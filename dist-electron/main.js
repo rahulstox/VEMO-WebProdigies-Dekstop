@@ -1,4 +1,4 @@
-import { app, ipcMain, desktopCapturer, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain, systemPreferences, desktopCapturer } from "electron";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -31,9 +31,7 @@ function createWindow() {
   });
   studio = new BrowserWindow({
     width: 400,
-    // height: 200,
     minHeight: 70,
-    // maxHeight: 400,
     minWidth: 300,
     maxWidth: 400,
     frame: false,
@@ -51,14 +49,15 @@ function createWindow() {
   floatingWebCam = new BrowserWindow({
     width: 200,
     height: 200,
-    minHeight: 20,
+    minHeight: 200,
     maxHeight: 200,
     minWidth: 200,
     maxWidth: 200,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    focusable: false,
+    hasShadow: true,
+    focusable: true,
     icon: path.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     webPreferences: {
       nodeIntegration: false,
@@ -100,45 +99,72 @@ app.on("window-all-closed", () => {
     floatingWebCam = null;
   }
 });
-ipcMain.on("closeApp", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    win = null;
-    studio = null;
-    floatingWebCam = null;
-  }
-});
-ipcMain.handle("getSources", async () => {
-  const data = await desktopCapturer.getSources({
-    thumbnailSize: { height: 100, width: 150 },
-    fetchWindowIcons: true,
-    types: ["window", "screen"]
-  });
-  return data;
-});
-ipcMain.on("media-sources", (event, payload) => {
-  console.log(event);
-  studio == null ? void 0 : studio.webContents.send("profile-received", payload);
-});
-ipcMain.on("resize-studio", (event, payload) => {
-  console.log(event);
-  if (payload.shrink) {
-    studio == null ? void 0 : studio.setSize(400, 100);
-  }
-  if (!payload.shrink) {
-    studio == null ? void 0 : studio.setSize(400, 250);
-  }
-});
-ipcMain.on("hide-plugin", (event, payload) => {
-  console.log(event);
-  win == null ? void 0 : win.webContents.send("hide-plugin", payload);
-});
 app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  ipcMain.handle("getSources", async () => {
+    try {
+      console.log("getSources called from renderer");
+      if (process.platform === "darwin") {
+        const status = systemPreferences.getMediaAccessStatus("screen");
+        if (status !== "granted") {
+          const success = await systemPreferences.askForMediaAccess("screen");
+          if (!success) {
+            console.log("Screen recording permission denied by user.");
+            return {
+              error: "PERMISSION_DENIED",
+              message: "Permission was denied."
+            };
+          }
+        }
+      }
+      const sources = await desktopCapturer.getSources({
+        thumbnailSize: { height: 100, width: 150 },
+        fetchWindowIcons: true,
+        types: ["screen", "window"]
+      });
+      console.log("Found sources:", sources.length);
+      sources.forEach((source, index) => {
+        console.log(`Source ${index}:`, {
+          id: source.id,
+          name: source.name,
+          type: source.id.startsWith("screen:") ? "screen" : "window"
+        });
+      });
+      const sanitized = sources.map((s, idx) => ({
+        id: s.id,
+        name: s.id.startsWith("screen:") ? `Screen ${idx + 1}${s.name && s.name !== "" ? ` (${s.name})` : ""}` : s.name || `Window ${idx + 1}`,
+        type: s.id.startsWith("screen:") ? "screen" : "window"
+      }));
+      return sanitized;
+    } catch (error) {
+      console.error("Error in getSources:", error);
+      return [];
+    }
+  });
+  ipcMain.on("closeApp", () => {
+    if (process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+  ipcMain.on("media-sources", (_, payload) => {
+    studio == null ? void 0 : studio.webContents.send("profile-received", payload);
+  });
+  ipcMain.on("resize-studio", (_, payload) => {
+    if (payload.shrink) {
+      studio == null ? void 0 : studio.setSize(400, 100);
+    } else {
+      studio == null ? void 0 : studio.setSize(400, 250);
+    }
+  });
+  ipcMain.on("hide-plugin", (_, payload) => {
+    win == null ? void 0 : win.webContents.send("hide-plugin", payload);
+  });
+  createWindow();
+});
 export {
   MAIN_DIST,
   RENDERER_DIST,

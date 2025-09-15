@@ -3,6 +3,11 @@
 
 @custom-variant dark (&:is(.dark *));
 
+html,
+body {
+  background-color: transparent !important;
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -139,4 +144,16 @@
 ::-webkit-scrollbar-thumb {
   background: gray;
   border-radius: 10px;
+}
+
+.webcam-circle {
+  border-radius: 50%;
+  object-fit: cover;
+  /* Ensures the video fills the circle without stretching */
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(255, 255, 255, 0.7);
+  /* Optional: Adds a nice white border */
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+  /* Optional: Adds a subtle shadow */
 }
