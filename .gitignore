@@ -25,3 +25,7 @@ dist-ssr
 
 
 .env
+# Build output
+/dist
+/dist-electron
+/release
