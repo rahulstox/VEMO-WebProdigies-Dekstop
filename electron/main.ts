@@ -6,6 +6,7 @@ import {
   systemPreferences,
 } from "electron";
 import { fileURLToPath } from "node:url";
+import { autoUpdater } from "electron-updater";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -137,15 +138,15 @@ app.whenReady().then(() => {
       if (process.platform === "darwin") {
         const status = systemPreferences.getMediaAccessStatus("screen");
         if (status !== "granted") {
-          const success = await systemPreferences.askForMediaAccess("screen");
-          if (!success) {
-            console.log("Screen recording permission denied by user.");
-            return {
-              error: "PERMISSION_DENIED",
-              message: "Permission was denied.",
-            };
-          }
-        }
+        //   const success = await systemPreferences.askForMediaAccess("screen");
+        //   if (!success) {
+        //     console.log("Screen recording permission denied by user.");
+        //     return {
+        //       error: "PERMISSION_DENIED",
+        //       message: "Permission was denied.",
+        //     };
+        //   }
+         }
       }
 
       const sources = await desktopCapturer.getSources({
@@ -202,4 +203,5 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+   autoUpdater.checkForUpdatesAndNotify();
 });

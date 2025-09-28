@@ -11,6 +11,13 @@
     "dist",
     "dist-electron"
   ],
+  // --- YAHAN ADD KAREIN ---
+  "publish": {
+    "provider": "github",
+    "owner": "rahulstox",
+    "repo": "VEMO-WebProdigies-Dekstop"
+  },
+  // -----------------------
   "mac": {
     "target": [
       "dmg"

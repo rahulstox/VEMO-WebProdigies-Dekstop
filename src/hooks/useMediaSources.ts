@@ -3,12 +3,9 @@ import { useReducer } from "react";
 
 export type SourceDeviceStateProps = {
   displays?: {
-    appIcons: null;
-    display: null;
-    displayId: string;
     id: string;
     name: string;
-    thumbnail: unknown[];
+    type?: "screen" | "window";
   }[];
   audioInput?: {
     deviceId: string;
